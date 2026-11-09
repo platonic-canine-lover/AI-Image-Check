@@ -19,11 +19,17 @@ trust lists". An image from a real signer says so instead.)
 It reports evidence, never a guess. When there is no evidence it says so,
 and that means **unknown**, not **real**.
 
+> **Status: v1.** Content Credentials and metadata labels, a command line
+> and a local page, all tested (see [Testing](#testing)). Not yet checked
+> against a file straight from a real AI generator: every signed test image
+> so far is either an official C2PA sample or one made for the tests with
+> the C2PA test certificate. See [Roadmap](#roadmap).
+
 ## What it reads
 
 | Evidence | Strength | Where it comes from |
 |---|---|---|
-| **Content Credentials** (C2PA) | Signed. Can't be altered without the check failing. | Adobe Firefly and Photoshop, OpenAI, Google, Microsoft, some cameras and phones |
+| **Content Credentials** (C2PA) | Signed. Can't be altered without the check failing. | Tools and devices that sign their output, e.g. Adobe Firefly and Photoshop, OpenAI's image generation, some cameras and phones |
 | **Metadata labels** | Unverified. Anyone can add or remove one. | IPTC "digital source type" in XMP, the creating tool's name, the settings Stable Diffusion and ComfyUI write into PNGs |
 
 Content Credentials answer three separate questions, and the report keeps
@@ -47,8 +53,9 @@ gradient, a fractal) and is deliberately not counted.
 
 - **Show the original image** unless the record kept a thumbnail of it.
   Editing tools that write Content Credentials often do; nothing else does.
-- **Spot an AI image whose records were stripped.** Most apps and platforms
-  remove metadata on upload, and a screenshot removes everything. A
+- **Spot an AI image whose records were stripped.** Many apps and platforms
+  remove metadata when an image is shared, and a screenshot removes
+  everything. A
   detector model that guesses from the pixels is planned (v2), but only
   after it has been measured on a labelled test set: a wrong "this is AI" on
   someone's real photo does harm.
@@ -57,7 +64,8 @@ gradient, a fractal) and is deliberately not counted.
 
 ## Install
 
-Python 3.10 or later.
+Python 3.10 or later (developed and tested on 3.12; the c2pa-python
+library itself needs 3.10).
 
 ```sh
 python3 -m venv .venv
@@ -102,16 +110,32 @@ which covers signers from before the conformance programme. They are not
 shipped with the code because they change. Without them, signatures are
 still checked but every signer is reported as unconfirmed.
 
-## Development
+## Testing
 
 ```sh
 .venv/bin/pip install -e '.[dev]'
 .venv/bin/python -m pytest
-python tests/make_fixtures.py   # rebuild the signed test images
+.venv/bin/python tests/make_fixtures.py   # rebuild the signed test images
 ```
 
-The tests never use the machine's cached trust lists; trusted-signer cases
-use the C2PA test root as their only anchor.
+51 tests, no network needed. They never use the machine's cached trust
+lists; trusted-signer cases use the C2PA test root as their only anchor.
+
+| Test images | What they cover |
+|---|---|
+| `tests/fixtures/caidata/` (official C2PA samples) | no credentials; computer-made but not AI; an edit that kept its source thumbnail; a broken signature; an image changed after signing; a real Adobe-signed composite |
+| `tests/fixtures/made/` (built by `make_fixtures.py`) | made by AI; edited with AI; AI then cropped in an ordinary editor; a camera photo |
+| generated in the tests with Pillow | each metadata label, and look-alikes that must not count (a caption naming OpenAI, `algorithmicMedia`, a PNG chunk without generator settings) |
+
+It has also been run by hand over older official C2PA samples with long
+edit chains and several kinds of damage; each was read without error and
+every damaged one was reported as broken.
+
+**Continuous integration.** Each night a self-hosted
+[ci-runner](https://github.com/platonic-canine-lover/CI-runner) builds any
+new commit on `main`: it creates the virtual environment, installs the
+package, byte-compiles `src` and `tests`, runs the tests, and reports the
+result to GitHub as a commit status.
 
 ```
 src/aiimagecheck/
@@ -123,6 +147,15 @@ src/aiimagecheck/
   cli.py           the command line
   server.py        the local drop-an-image page (page.html)
 ```
+
+## Roadmap
+
+| | |
+|---|---|
+| ✅ v1 | Content Credentials (integrity, trust lists, actions, source thumbnails), metadata labels, CLI, local page |
+| next | Check real generator output (ChatGPT, Firefly, Gemini, Photoshop generative fill) and record what each writes |
+| next | Measure what common apps and platforms strip (messaging apps, social networks, screenshots), so the "no evidence" wording can name them accurately |
+| v2 | A local detector score for images with no records, added only after candidate models are measured on a labelled set, and always reported as an estimate |
 
 Built on the official [c2pa-python](https://github.com/contentauth/c2pa-python)
 library and [Pillow](https://python-pillow.org/).

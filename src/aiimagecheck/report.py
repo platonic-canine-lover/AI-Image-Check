@@ -122,8 +122,8 @@ def build(name: str, cred: Credentials, labels: list[Label], read_error: str = "
         r.reasons.append(read_error)
         return r
     r.headline = "No AI evidence found. That does not mean the image is real."
-    r.reasons.append("Most apps and platforms (WhatsApp, Instagram, X, screenshots) strip these records,"
-                     " so an AI image often arrives with no trace.")
+    r.reasons.append("Many apps and platforms strip these records when an image is shared, and a"
+                     " screenshot removes them entirely, so an AI image can arrive with no trace.")
     if cred.error:
         r.reasons.append(f"Content Credentials could not be read: {cred.error}")
     return r
