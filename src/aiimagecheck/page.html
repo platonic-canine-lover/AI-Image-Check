@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Image Check</title>
+<style>
+  :root { --bg:#f7f7f5; --card:#fff; --ink:#1d1d1b; --muted:#66645e; --line:#dcdad3;
+          --ai:#b3261e; --edit:#a05a00; --ok:#2e6b30; --warn:#7a5b00; --none:#4b5563; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161615; --card:#21211f; --ink:#ecebe6; --muted:#a3a19a; --line:#3a3936;
+            --ai:#ff8a80; --edit:#ffb74d; --ok:#81c784; --warn:#ffd54f; --none:#b0b6bf; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui, sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:1.4rem; margin:0 0 4px; }
+  p.sub { margin:0 0 20px; color:var(--muted); }
+  #drop { border:2px dashed var(--line); border-radius:12px; padding:32px 16px; text-align:center;
+          background:var(--card); cursor:pointer; }
+  #drop.over { border-color:var(--ink); }
+  #drop input { display:none; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-top:16px; }
+  .head { font-size:1.15rem; font-weight:650; margin:0 0 8px; }
+  .ai_made .head, .broken .head { color:var(--ai); }
+  .ai_edited .head { color:var(--edit); }
+  .ai_label .head { color:var(--warn); }
+  .no_ai_recorded .head { color:var(--ok); }
+  .no_evidence .head, .unreadable .head { color:var(--none); }
+  ul { margin:0; padding-left:20px; }
+  h2 { font-size:.95rem; margin:16px 0 6px; color:var(--muted); font-weight:600; }
+  dl { display:grid; grid-template-columns:max-content 1fr; gap:4px 12px; margin:0; }
+  dt { color:var(--muted); } dd { margin:0; overflow-wrap:anywhere; }
+  .row { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
+  figure { margin:0; } figure img, #preview { max-width:220px; max-height:220px; border-radius:8px; border:1px solid var(--line); }
+  figcaption { font-size:.85rem; color:var(--muted); }
+  .muted { color:var(--muted); font-size:.9rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>AI Image Check</h1>
+  <p class="sub">Drop an image to see what its own records say about AI. Nothing leaves this computer.</p>
+  <label id="drop">Drop an image here, or click to choose one<input id="file" type="file" accept="image/*"></label>
+  <div id="out"></div>
+  <p class="muted">"No AI evidence" is not "real": most apps strip these records. Labels can be faked; signed Content Credentials can't be altered without showing.</p>
+</main>
+<script>
+const out = document.getElementById('out'), drop = document.getElementById('drop'), input = document.getElementById('file');
+const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) check(e.dataTransfer.files[0]); });
+input.addEventListener('change', () => { if (input.files[0]) check(input.files[0]); input.value = ''; });
+
+async function check(file) {
+  out.replaceChildren(el('div', 'Checking ' + file.name + '…', 'card muted'));
+  try {
+    const res = await fetch('/check', { method: 'POST', body: file, headers: { 'X-Filename': encodeURIComponent(file.name) } });
+    const r = await res.json();
+    if (!res.ok) throw new Error(r.error || res.statusText);
+    render(r, file);
+  } catch (err) {
+    out.replaceChildren(el('div', 'Could not check the image: ' + err.message, 'card'));
+  }
+}
+
+function render(r, file) {
+  const card = el('div', null, 'card ' + r.verdict);
+  card.append(el('p', r.headline, 'head'));
+  const ul = el('ul'); r.reasons.forEach(t => ul.append(el('li', t))); card.append(ul);
+
+  const row = el('div', null, 'row');
+  const fig = el('figure'); const img = el('img'); img.id = 'preview'; img.alt = 'the checked image';
+  const reader = new FileReader(); reader.onload = () => { img.src = reader.result; }; reader.readAsDataURL(file);
+  fig.append(img, el('figcaption', decodeURIComponent(r.name))); row.append(fig);
+  const c = r.credentials;
+  (c ? c.ingredients : []).filter(i => i.thumbnail).forEach(i => {
+    const f = el('figure'); const t = el('img'); t.src = i.thumbnail; t.alt = 'recorded source image';
+    f.append(t, el('figcaption', (i.relationship === 'parentOf' ? 'Made from: ' : 'Includes: ') + (i.title || 'untitled')));
+    row.append(f);
+  });
+  card.append(row);
+
+  if (c) {
+    card.append(el('h2', 'Content Credentials'));
+    const dl = el('dl');
+    const add = (k, v) => { if (v) { dl.append(el('dt', k), el('dd', v)); } };
+    add('Record', c.state + (c.problems.length ? ' (' + c.problems.join(', ') + ')' : ''));
+    add('Signer', [c.signer, c.signerName].filter(Boolean).join(' / '));
+    add('Signed', c.signedAt);
+    add('Written by', c.generator);
+    c.actions.forEach(a => add(a.active ? 'Action' : 'Earlier action',
+      a.action + (a.software ? ' by ' + a.software : '') + (a.source_type ? ' (' + a.source_type + ')' : '')));
+    card.append(dl);
+  }
+  if (r.labels.length) {
+    card.append(el('h2', 'Metadata labels (unverified)'));
+    const dl = el('dl'); r.labels.forEach(l => dl.append(el('dt', l.where), el('dd', l.value))); card.append(dl);
+  }
+  out.replaceChildren(card);
+}
+</script>
+</body>
+</html>
