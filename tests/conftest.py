@@ -46,3 +46,18 @@ def png(text: dict[str, str] | None = None) -> bytes:
 def xmp(body: str) -> bytes:
     return ('<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
             f'<rdf:Description {body}/></rdf:RDF></x:xmpmeta>').encode()
+
+
+def pdf(xmp: bytes | None = None, **info: str) -> bytes:
+    """A one-page PDF with the given document information fields
+    (creator=, producer=, title=) and, optionally, an XMP packet."""
+    from pypdf import PdfReader, PdfWriter
+    buf = io.BytesIO()
+    Image.new("RGB", (60, 80), "white").save(buf, "PDF", **info)
+    if xmp is None:
+        return buf.getvalue()
+    writer = PdfWriter(clone_from=PdfReader(buf))
+    writer.xmp_metadata = xmp
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()

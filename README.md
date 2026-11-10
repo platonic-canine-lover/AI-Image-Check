@@ -1,7 +1,8 @@
 # AI Image Check
 
 Says whether an image's **own records** show it was made or edited with AI,
-and, when the record kept one, shows the image it was made from.
+and, when the record kept one, shows the image it was made from. It reads
+the same records from PDFs.
 
 ```
 $ aiimagecheck tests/fixtures/made/ai-edited.jpg
@@ -19,11 +20,12 @@ trust lists". An image from a real signer says so instead.)
 It reports evidence, never a guess. When there is no evidence it says so,
 and that means **unknown**, not **real**.
 
-> **Status: v1.** Content Credentials and metadata labels, a command line
-> and a local page, all tested (see [Testing](#testing)). Checked against
-> real ChatGPT output: "Made with AI", signed by OpenAI, on the trust lists.
-> Firefly, Gemini and Photoshop generative fill are not checked yet. See
-> [Roadmap](#roadmap).
+> **Status: v1, plus PDFs.** Content Credentials and metadata labels, a
+> command line and a local page, all tested (see [Testing](#testing)).
+> Checked against real ChatGPT image output: "Made with AI", signed by
+> OpenAI, on the trust lists. Firefly, Gemini and Photoshop generative fill
+> are not checked yet, and PDF support has only been run on test files, not
+> on a PDF from a real AI tool. See [Roadmap](#roadmap).
 
 ## What it reads
 
@@ -49,6 +51,30 @@ AI) and `compositeWithTrainedAlgorithmicMedia` (partly AI). The similar
 `algorithmicMedia` means made by a program *without* training data (a
 gradient, a fractal) and is deliberately not counted.
 
+### PDFs
+
+A PDF can carry the same two kinds of record, and both are read:
+
+- **Content Credentials**, checked exactly as for an image: intact, who
+  signed, what happened. A PDF changed after signing is reported as broken.
+- **What the PDF says made it**: the "Creator" (the app the document was
+  written in) and "Producer" (the software that made the PDF) fields, and
+  the XMP packet. Both are always shown, as unverified. They count as an AI
+  label only when they name an AI tool or carry an IPTC AI source type.
+
+```
+$ aiimagecheck letter.pdf
+letter.pdf
+  No AI evidence found. That does not mean a person wrote it.
+  - Few tools that make PDFs record AI use, and printing or re-saving a PDF drops any record that was there, so an AI-written document usually carries no trace.
+  - The PDF says it was written in Microsoft Word and made into a PDF by macOS Quartz PDFContext (unsigned; neither is an AI tool this check knows).
+  - This reads the file's records only: it does not read the text, so it cannot tell whether the words were written by AI, and pictures inside the PDF are not checked.
+```
+
+Expect "no evidence" for most PDFs. Few document tools write these records
+today, and a document drafted with AI and then exported from a word
+processor says only that the word processor made it.
+
 ## What it can't do
 
 - **Show the original image** unless the record kept a thumbnail of it.
@@ -61,6 +87,11 @@ gradient, a fractal) and is deliberately not counted.
   someone's real photo does harm.
 - **Read invisible watermarks** such as Google's SynthID. Only their makers
   can check those.
+- **Tell whether the words in a PDF were written by AI.** It reads the
+  file's records, not the text. Detectors that guess from wording are
+  unreliable and are not part of this tool.
+- **Check the pictures inside a PDF.** Only the PDF's own records are read.
+  Password-protected PDFs are reported as unreadable.
 
 ## Install
 
@@ -77,26 +108,30 @@ python3 -m venv .venv
 
 ```sh
 aiimagecheck photo.jpg more.png          # a report per image
+aiimagecheck report.pdf                  # PDFs too
 aiimagecheck --json photo.jpg            # the same, as JSON
 aiimagecheck photo.jpg --save-originals out/   # save any recorded source thumbnails
-aiimagecheck serve                       # a page at http://127.0.0.1:3103 to drop images onto
+aiimagecheck serve                       # a page at http://127.0.0.1:3103 to drop images and PDFs onto
 aiimagecheck update-trust                # refresh the trust lists
 ```
 
 The page runs on this computer only (it refuses any non-loopback address),
-and images never leave it.
+and files never leave it.
 
 ### Verdicts
 
 | Verdict | Meaning |
 |---|---|
-| `ai_made` | Content Credentials say generative AI made it (or the image it came from) |
+| `ai_made` | Content Credentials say generative AI made it (or the file it came from) |
 | `ai_edited` | Content Credentials say AI was used to change it |
 | `no_ai_recorded` | Content Credentials are present and record no AI use |
 | `broken` | Content Credentials are present but fail validation; not trusted |
 | `ai_label` | No Content Credentials, but an unverified AI label in the metadata |
-| `no_evidence` | Nothing either way. Not the same as real |
-| `unreadable` | Not an image this tool can open |
+| `no_evidence` | Nothing either way. Not the same as real, or as written by a person |
+| `unreadable` | Not an image or PDF this tool can open |
+
+The JSON report also carries `kind` (`image` or `pdf`) and, for a PDF,
+`document` with its stated `creator` and `producer`.
 
 Exit status: `0` all files read, `1` a file could not be read, `2` bad usage.
 
@@ -120,18 +155,19 @@ a genuine ChatGPT image was reported as broken.
 ```sh
 .venv/bin/pip install -e '.[dev]'
 .venv/bin/python -m pytest
-.venv/bin/python tests/make_fixtures.py   # rebuild the signed test images
+.venv/bin/python tests/make_fixtures.py   # rebuild the signed test images and PDFs
 ```
 
-54 tests, no network needed. They never use the machine's cached trust
+79 tests, no network needed. They never use the machine's cached trust
 lists; trusted-signer cases use the C2PA test root as their only anchor.
 
 | Test images | What they cover |
 |---|---|
 | `tests/fixtures/caidata/` (official C2PA samples) | no credentials; computer-made but not AI; an edit that kept its source thumbnail; a broken signature; an image changed after signing; a real Adobe-signed composite |
-| `tests/fixtures/made/` (built by `make_fixtures.py`) | made by AI; edited with AI; AI then cropped in an ordinary editor; a camera photo |
+| `tests/fixtures/made/` (built by `make_fixtures.py`) | made by AI; edited with AI; AI then cropped in an ordinary editor; a camera photo; a signed PDF made by AI and one with no AI recorded |
 | `tests/fixtures/generators/` (saved straight from the generator) | a real ChatGPT image, signed by OpenAI; see its README |
 | generated in the tests with Pillow | each metadata label, and look-alikes that must not count (a caption naming OpenAI, `algorithmicMedia`, a PNG chunk without generator settings) |
+| PDFs generated in the tests | each PDF label; ordinary software and a title naming ChatGPT that must not count; a PDF changed after signing; damaged and password-protected PDFs |
 
 It has also been run by hand over older official C2PA samples with long
 edit chains and several kinds of damage; each was read without error and
@@ -147,11 +183,12 @@ result to GitHub as a commit status.
 src/aiimagecheck/
   credentials.py   Content Credentials: intact? who signed? what happened?
   labels.py        AI labels in XMP, EXIF and PNG text
+  pdf.py           what a PDF says made it (document info, XMP)
   sources.py       the IPTC digital source type vocabulary
   report.py        the verdict and its wording
   trust.py         downloading and loading the trust lists
   cli.py           the command line
-  server.py        the local drop-an-image page (page.html)
+  server.py        the local drop-a-file page (page.html)
 ```
 
 ## Roadmap
@@ -160,12 +197,14 @@ src/aiimagecheck/
 |---|---|
 | ✅ v1 | Content Credentials (integrity, trust lists, actions, source thumbnails), metadata labels, CLI, local page |
 | ✅ | Real generator output: ChatGPT (gpt-image, signed by OpenAI) |
+| ✅ | PDFs: Content Credentials, and the software the PDF says made it |
 | next | The same for Firefly, Gemini and Photoshop generative fill |
+| next | A PDF from a real tool that signs or labels its documents, to check against |
 | next | Measure what common apps and platforms strip (messaging apps, social networks, screenshots), so the "no evidence" wording can name them accurately |
 | v2 | A local detector score for images with no records, added only after candidate models are measured on a labelled set, and always reported as an estimate |
 
 Built on the official [c2pa-python](https://github.com/contentauth/c2pa-python)
-library and [Pillow](https://python-pillow.org/).
+library, [Pillow](https://python-pillow.org/) and [pypdf](https://github.com/py-pdf/pypdf).
 
 ## Licence
 

@@ -40,8 +40,8 @@
 <body>
 <main>
   <h1>AI Image Check</h1>
-  <p class="sub">Drop an image to see what its own records say about AI. Nothing leaves this computer.</p>
-  <label id="drop">Drop an image here, or click to choose one<input id="file" type="file" accept="image/*"></label>
+  <p class="sub">Drop an image or a PDF to see what its own records say about AI. Nothing leaves this computer.</p>
+  <label id="drop">Drop an image or PDF here, or click to choose one<input id="file" type="file" accept="image/*,application/pdf,.pdf"></label>
   <div id="out"></div>
   <p class="muted">"No AI evidence" is not "real": most apps strip these records. Labels can be faked; signed Content Credentials can't be altered without showing.</p>
 </main>
@@ -61,7 +61,7 @@ async function check(file) {
     if (!res.ok) throw new Error(r.error || res.statusText);
     render(r, file);
   } catch (err) {
-    out.replaceChildren(el('div', 'Could not check the image: ' + err.message, 'card'));
+    out.replaceChildren(el('div', 'Could not check the file: ' + err.message, 'card'));
   }
 }
 
@@ -71,9 +71,13 @@ function render(r, file) {
   const ul = el('ul'); r.reasons.forEach(t => ul.append(el('li', t))); card.append(ul);
 
   const row = el('div', null, 'row');
-  const fig = el('figure'); const img = el('img'); img.id = 'preview'; img.alt = 'the checked image';
-  const reader = new FileReader(); reader.onload = () => { img.src = reader.result; }; reader.readAsDataURL(file);
-  fig.append(img, el('figcaption', decodeURIComponent(r.name))); row.append(fig);
+  const fig = el('figure');
+  if (r.kind !== 'pdf') {  // a PDF has no picture to show; its name is enough
+    const img = el('img'); img.id = 'preview'; img.alt = 'the checked image';
+    const reader = new FileReader(); reader.onload = () => { img.src = reader.result; }; reader.readAsDataURL(file);
+    fig.append(img);
+  }
+  fig.append(el('figcaption', decodeURIComponent(r.name))); row.append(fig);
   const c = r.credentials;
   (c ? c.ingredients : []).filter(i => i.thumbnail).forEach(i => {
     const f = el('figure'); const t = el('img'); t.src = i.thumbnail; t.alt = 'recorded source image';
@@ -97,6 +101,13 @@ function render(r, file) {
   if (r.labels.length) {
     card.append(el('h2', 'Metadata labels (unverified)'));
     const dl = el('dl'); r.labels.forEach(l => dl.append(el('dt', l.where), el('dd', l.value))); card.append(dl);
+  }
+  if (r.document) {
+    card.append(el('h2', 'PDF info (unverified)'));
+    const dl = el('dl');
+    if (r.document.creator) dl.append(el('dt', 'Written in'), el('dd', r.document.creator));
+    if (r.document.producer) dl.append(el('dt', 'PDF made by'), el('dd', r.document.producer));
+    card.append(dl);
   }
   out.replaceChildren(card);
 }

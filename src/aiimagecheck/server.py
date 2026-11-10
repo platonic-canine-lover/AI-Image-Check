@@ -1,7 +1,7 @@
-"""`aiimagecheck serve`: a page on this machine to drop images onto.
+"""`aiimagecheck serve`: a page on this machine to drop images and PDFs onto.
 
-Loopback only, refused otherwise: images may be private, and this is a tool
-for the person at the keyboard, not a service. The page posts the image's
+Loopback only, refused otherwise: files may be private, and this is a tool
+for the person at the keyboard, not a service. The page posts the file's
 raw bytes (no multipart form, so nothing beyond the standard library), and
 gets the report back as JSON with any source thumbnail inline.
 """
@@ -21,7 +21,7 @@ from importlib import resources
 
 from . import check
 
-MAX_UPLOAD = 50 * 1024 * 1024  # bytes; larger than any photo, small enough to refuse abuse
+MAX_UPLOAD = 50 * 1024 * 1024  # bytes; larger than any photo or most PDFs, small enough to refuse abuse
 
 
 def is_loopback(host: str) -> bool:
@@ -58,7 +58,7 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return self._json(411, {"error": "Content-Length required"})
         if length <= 0 or length > MAX_UPLOAD:
-            return self._json(413, {"error": f"image must be between 1 byte and {MAX_UPLOAD // (1024 * 1024)} MB"})
+            return self._json(413, {"error": f"file must be between 1 byte and {MAX_UPLOAD // (1024 * 1024)} MB"})
         data = self.rfile.read(length)
         name = (self.headers.get("X-Filename") or "upload")[:200]
         report = check.check_bytes(data, name, self.trust_settings)

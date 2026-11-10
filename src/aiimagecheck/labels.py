@@ -42,7 +42,7 @@ _SOURCE_RE = re.compile(r"digitalsourcetype/([A-Za-z]+)")
 # Tool names count only in fields that say which software made or changed
 # the image, never in captions or descriptions: "a photo of OpenAI's office"
 # is not an AI label. XMP writes these as attributes or as elements.
-_XMP_TOOL_FIELDS = ("xmp:CreatorTool", "stEvt:softwareAgent", "photoshop:Credit", "Iptc4xmpCore:Credit")
+_XMP_TOOL_FIELDS = ("xmp:CreatorTool", "stEvt:softwareAgent", "photoshop:Credit", "Iptc4xmpCore:Credit", "pdf:Producer")
 _XMP_FIELD_RE = re.compile(
     r"(" + "|".join(re.escape(f) for f in _XMP_TOOL_FIELDS) + r")"
     r"""\s*(?:=\s*"([^"]*)"|>([^<]*)<)""")
@@ -65,14 +65,16 @@ def find(data: bytes) -> tuple[list[Label], str]:
         _xmp(img, labels)
         _exif(img, labels)
         _png_text(img, labels)
-    return _dedupe(labels), ""
+    return dedupe(labels), ""
 
 
 def _xmp(img: Image.Image, out: list[Label]) -> None:
     raw = img.info.get("xmp") or img.info.get("XML:com.adobe.xmp") or b""
-    text = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else str(raw)
-    if not text:
-        return
+    xmp_labels(raw.decode("utf-8", "replace") if isinstance(raw, bytes) else str(raw), out)
+
+
+def xmp_labels(text: str, out: list[Label], tool_re: re.Pattern = _TOOL_RE) -> None:
+    """AI labels in an XMP packet, from an image or any other file."""
     for name in _SOURCE_RE.findall(text):
         if name in sources.AI_MADE:
             out.append(Label("XMP digital source type", name, "ai_made"))
@@ -80,7 +82,7 @@ def _xmp(img: Image.Image, out: list[Label]) -> None:
             out.append(Label("XMP digital source type", name, "ai_edited"))
     for field_m in _XMP_FIELD_RE.finditer(text):
         value = field_m.group(2) or field_m.group(3) or ""
-        if m := _TOOL_RE.search(value):
+        if m := tool_re.search(value):
             out.append(Label(f"XMP {field_m.group(1)}", m.group(0), "ai_tool"))
 
 
@@ -108,7 +110,7 @@ def _png_text(img: Image.Image, out: list[Label]) -> None:
             out.append(Label(f"PNG text '{key}'", m.group(0), "ai_tool"))
 
 
-def _dedupe(labels: list[Label]) -> list[Label]:
+def dedupe(labels: list[Label]) -> list[Label]:
     seen, out = set(), []
     for label in labels:
         key = (label.where, label.value.lower(), label.meaning)

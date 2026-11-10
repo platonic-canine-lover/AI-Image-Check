@@ -1,4 +1,4 @@
-"""Build the signed test images in tests/fixtures/made/.
+"""Build the signed test images and PDFs in tests/fixtures/made/.
 
 They are signed with the C2PA project's public TEST certificate (in
 fixtures/caidata, MIT-licensed from contentauth/c2pa-python), so they
@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 
 import c2pa
+from PIL import Image
 
 HERE = Path(__file__).parent / "fixtures"
 CAI = HERE / "caidata"
@@ -27,21 +28,43 @@ def signer() -> c2pa.Signer:
     return c2pa.Signer.from_info(info)
 
 
-def sign(dest: Path, source: Path, actions: list[dict], parent: Path | None = None) -> None:
+FORMATS = {".jpg": "image/jpeg", ".pdf": "application/pdf"}
+
+
+def sign(dest: Path, source: Path | bytes, actions: list[dict], parent: Path | None = None) -> None:
+    fmt = FORMATS[dest.suffix]
     manifest = {
         "claim_generator_info": [{"name": "ai-image-check test fixtures", "version": "1"}],
         "title": dest.name,
-        "format": "image/jpeg",
+        "format": fmt,
         "assertions": [{"label": "c2pa.actions.v2", "data": {"actions": actions}}],
     }
     with c2pa.Builder(manifest) as b, signer() as s:
         if parent:
             with open(parent, "rb") as f:
                 b.add_ingredient({"title": parent.name, "relationship": "parentOf", "label": "parent"}, "image/jpeg", f)
-        with open(source, "rb") as src:
+        with (io.BytesIO(source) if isinstance(source, bytes) else open(source, "rb")) as src:
             out = io.BytesIO()
-            b.sign(s, "image/jpeg", src, out)
+            b.sign(s, fmt, src, out)
     dest.write_bytes(out.getvalue())
+
+
+def plain_pdf(**info: str) -> bytes:
+    """A one-page PDF with the given document information fields."""
+    buf = io.BytesIO()
+    Image.new("RGB", (60, 80), "white").save(buf, "PDF", **info)
+    return buf.getvalue()
+
+
+def pdfs() -> None:
+    """Signed PDFs: one a generator made, one an ordinary office export."""
+    OUT.mkdir(exist_ok=True)
+    sign(OUT / "ai-created.pdf", plain_pdf(title="Example report", creator="Example Document Generator"), [
+        {"action": "c2pa.created", "softwareAgent": {"name": "Example Document Generator"},
+         "digitalSourceType": IPTC + "trainedAlgorithmicMedia"}])
+    sign(OUT / "typed.pdf", plain_pdf(title="Example letter", creator="Example Word Processor"), [
+        {"action": "c2pa.created", "softwareAgent": {"name": "Example Word Processor"},
+         "digitalSourceType": IPTC + "digitalCreation"}])
 
 
 def main() -> None:
@@ -66,7 +89,9 @@ def main() -> None:
         {"action": "c2pa.created", "softwareAgent": {"name": "Example Camera"},
          "digitalSourceType": IPTC + "digitalCapture"}])
 
-    for f in sorted(OUT.glob("*.jpg")):
+    pdfs()
+
+    for f in sorted(OUT.glob("*.*")):
         with c2pa.Reader(str(f)) as r:
             print(f.name, json.loads(r.json()).get("validation_state"))
 

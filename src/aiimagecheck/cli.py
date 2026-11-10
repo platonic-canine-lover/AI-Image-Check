@@ -1,6 +1,6 @@
-"""aiimagecheck: say whether an image's own records show AI was used.
+"""aiimagecheck: say whether a file's own records show AI was used.
 
-    aiimagecheck photo.jpg [more.png ...] [--json] [--save-originals DIR]
+    aiimagecheck photo.jpg [more.png report.pdf ...] [--json] [--save-originals DIR]
     aiimagecheck serve [--port 3103]
     aiimagecheck update-trust
 """
@@ -27,9 +27,9 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _check(argv: list[str]) -> int:
-    p = argparse.ArgumentParser(prog="aiimagecheck", description="Report what an image's own records say about AI use.",
+    p = argparse.ArgumentParser(prog="aiimagecheck", description="Report what an image's or PDF's own records say about AI use.",
                                 epilog="Other commands: `aiimagecheck serve`, `aiimagecheck update-trust`.")
-    p.add_argument("images", nargs="+", type=Path, help="image files to check")
+    p.add_argument("images", nargs="+", type=Path, metavar="file", help="image or PDF files to check")
     p.add_argument("--json", action="store_true", help="print JSON instead of text")
     p.add_argument("--save-originals", type=Path, metavar="DIR",
                    help="save any recorded source-image thumbnails into DIR")
@@ -86,7 +86,7 @@ def _update_trust() -> int:
 
 def _serve(argv: list[str]) -> int:
     from . import server
-    p = argparse.ArgumentParser(prog="aiimagecheck serve", description="A local page to drop images onto.")
+    p = argparse.ArgumentParser(prog="aiimagecheck serve", description="A local page to drop images and PDFs onto.")
     p.add_argument("--listen", default="127.0.0.1:3103", help="loopback address (default 127.0.0.1:3103)")
     try:
         args = p.parse_args(argv)

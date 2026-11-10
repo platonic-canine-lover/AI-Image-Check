@@ -9,6 +9,8 @@ The rules, in order:
    intact, not who made it. The report says which.
 4. Finding nothing never means "real". Most platforms strip these records;
    the report says "no evidence", and why that is not a clean bill.
+5. For a PDF the records are about the file, never its words: no verdict
+   here says whether a person or a model wrote the text.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from dataclasses import dataclass, field
 from . import sources
 from .credentials import Credentials
 from .labels import Label
+from .pdf import Document
 
 AI_MADE = "ai_made"
 AI_EDITED = "ai_edited"
@@ -27,6 +30,10 @@ BROKEN = "broken"
 AI_LABEL = "ai_label"
 NONE = "no_evidence"
 UNREADABLE = "unreadable"
+
+IMAGE = "image"
+PDF = "pdf"
+_NOUN = {IMAGE: "image", PDF: "PDF"}
 
 
 @dataclass
@@ -37,11 +44,15 @@ class Report:
     reasons: list[str] = field(default_factory=list)
     credentials: Credentials | None = None
     labels: list[Label] = field(default_factory=list)
+    kind: str = IMAGE
+    document: Document | None = None   # a PDF's stated makers
 
     def to_dict(self, thumbnails: bool = False) -> dict:
         c = self.credentials
-        out = {"name": self.name, "verdict": self.verdict, "headline": self.headline, "reasons": self.reasons,
-               "labels": [vars(l) for l in self.labels]}
+        out = {"name": self.name, "kind": self.kind, "verdict": self.verdict, "headline": self.headline,
+               "reasons": self.reasons, "labels": [vars(l) for l in self.labels]}
+        if self.document and (self.document.creator or self.document.producer):
+            out["document"] = vars(self.document)
         if c and c.present:
             out["credentials"] = {
                 "state": c.state, "problems": c.problems, "signer": c.signer, "signerName": c.signer_name,
@@ -76,14 +87,23 @@ class Report:
         if self.labels:
             lines.append("  Metadata labels (unverified):")
             lines += [f"    {l.where}: {l.value}" for l in self.labels]
+        d = self.document
+        if d and (d.creator or d.producer):
+            lines.append("  PDF info (unverified):")
+            if d.creator:
+                lines.append(f"    written in: {d.creator}")
+            if d.producer:
+                lines.append(f"    PDF made by: {d.producer}")
         return "\n".join(lines)
 
 
-def build(name: str, cred: Credentials, labels: list[Label], read_error: str = "") -> Report:
-    r = Report(name=name, verdict=NONE, headline="", credentials=cred, labels=labels)
+def build(name: str, cred: Credentials, labels: list[Label], read_error: str = "",
+          kind: str = IMAGE, document: Document | None = None) -> Report:
+    r = Report(name=name, verdict=NONE, headline="", credentials=cred, labels=labels, kind=kind, document=document)
+    noun = _NOUN[kind]
 
     if cred.present and cred.state == "Invalid":
-        r.verdict, r.headline = BROKEN, "Content Credentials are broken: this image or its record changed after signing."
+        r.verdict, r.headline = BROKEN, f"Content Credentials are broken: this {noun} or its record changed after signing."
         r.reasons.append("What the record says can't be relied on: " + ", ".join(cred.problems or ["validation failed"]) + ".")
         if cred.ai_made or cred.ai_edited:
             r.reasons.append("The broken record claims AI was used.")
@@ -93,7 +113,7 @@ def build(name: str, cred: Credentials, labels: list[Label], read_error: str = "
         made_now = any(a.source_type in sources.AI_MADE and a.active for a in cred.actions)
         if cred.ai_made:
             r.verdict = AI_MADE
-            r.headline = "Made with AI." if made_now else "Made from an AI-generated image."
+            r.headline = "Made with AI." if made_now else f"Made from an AI-generated {'file' if kind == PDF else 'image'}."
         elif cred.ai_edited:
             r.verdict, r.headline = AI_EDITED, "Edited with AI."
         else:
@@ -105,9 +125,12 @@ def build(name: str, cred: Credentials, labels: list[Label], read_error: str = "
             r.reasons.append("Recorded AI tool: " + ", ".join(tools) + ".")
         r.reasons.append(_signer_line(cred))
         if cred.original:
-            r.reasons.append(f"The record keeps a thumbnail of the image it was made from ({cred.original.title or 'untitled'}).")
+            r.reasons.append(f"The record keeps a thumbnail of the {'file' if kind == PDF else 'image'} it was made from"
+                             f" ({cred.original.title or 'untitled'}).")
         if labels:
             r.reasons.append("Metadata labels agree or add detail; see below.")
+        if kind == PDF:
+            r.reasons.append(_PDF_SCOPE)
         return r
 
     if any(l.meaning in (AI_MADE, AI_EDITED, "ai_tool") for l in labels):
@@ -115,18 +138,40 @@ def build(name: str, cred: Credentials, labels: list[Label], read_error: str = "
         made = any(l.meaning == AI_MADE for l in labels)
         r.headline = ("AI label found: " + ("made with AI" if made else "AI was used") + " (unverified).")
         r.reasons.append("Metadata labels are not signed: anyone can add or remove one.")
+        if kind == PDF:
+            r.reasons.append(_PDF_SCOPE)
         return r
 
     if read_error:
-        r.verdict, r.headline = UNREADABLE, "Could not read this file as an image."
+        r.verdict, r.headline = UNREADABLE, f"Could not read this {'PDF' if kind == PDF else 'file as an image'}."
         r.reasons.append(read_error)
         return r
-    r.headline = "No AI evidence found. That does not mean the image is real."
-    r.reasons.append("Many apps and platforms strip these records when an image is shared, and a"
-                     " screenshot removes them entirely, so an AI image can arrive with no trace.")
+    if kind == PDF:
+        r.headline = "No AI evidence found. That does not mean a person wrote it."
+        r.reasons.append("Few tools that make PDFs record AI use, and printing or re-saving a PDF drops any"
+                         " record that was there, so an AI-written document usually carries no trace.")
+        if made_by := _made_by(document):
+            r.reasons.append(made_by)
+        r.reasons.append(_PDF_SCOPE)
+    else:
+        r.headline = "No AI evidence found. That does not mean the image is real."
+        r.reasons.append("Many apps and platforms strip these records when an image is shared, and a"
+                         " screenshot removes them entirely, so an AI image can arrive with no trace.")
     if cred.error:
         r.reasons.append(f"Content Credentials could not be read: {cred.error}")
     return r
+
+
+_PDF_SCOPE = ("This reads the file's records only: it does not read the text, so it cannot tell whether"
+              " the words were written by AI, and pictures inside the PDF are not checked.")
+
+
+def _made_by(d: Document | None) -> str:
+    """What the PDF says made it. Ordinary software, or it would be a label."""
+    if not d or not (d.creator or d.producer):
+        return ""
+    parts = ([f"written in {d.creator}"] if d.creator else []) + ([f"made into a PDF by {d.producer}"] if d.producer else [])
+    return "The PDF says it was " + " and ".join(parts) + " (unsigned; neither is an AI tool this check knows)."
 
 
 def _signer_line(c: Credentials) -> str:

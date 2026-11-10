@@ -44,6 +44,12 @@ def test_check_returns_the_report_and_the_original(base_url):
     assert r["credentials"]["ingredients"][0]["thumbnail"].startswith("data:image/")
 
 
+def test_check_takes_a_pdf(base_url):
+    status, r = post(base_url + "/check", (MADE / "ai-created.pdf").read_bytes(), {"X-Filename": "report.pdf"})
+    assert status == 200 and r["kind"] == "pdf" and r["verdict"] == "ai_made"
+    assert r["document"]["creator"] == "Example Document Generator"
+
+
 def test_empty_and_oversized_uploads_are_refused(base_url, monkeypatch):
     assert post(base_url + "/check", b"")[0] == 413
     monkeypatch.setattr(server, "MAX_UPLOAD", 10)

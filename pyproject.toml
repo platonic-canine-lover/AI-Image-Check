@@ -4,14 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-image-check"
-version = "0.1.0"
-description = "Say whether an image's own records show it was made or edited with AI."
+version = "0.2.0"
+description = "Say whether an image's or PDF's own records show it was made or edited with AI."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
     "c2pa-python>=0.38,<0.39",
     "Pillow>=11",
+    "pypdf>=6",
 ]
 
 [project.optional-dependencies]
