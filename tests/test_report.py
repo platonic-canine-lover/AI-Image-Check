@@ -2,7 +2,7 @@ import pytest
 
 from aiimagecheck import check, report
 
-from conftest import CAI, MADE, jpeg, xmp
+from conftest import CAI, GENERATORS, MADE, jpeg, xmp
 
 IPTC = "http://cv.iptc.org/newscodes/digitalsourcetype/"
 
@@ -21,6 +21,7 @@ def verdict(path_or_bytes, trust=None):
     (CAI / "XCA.jpg", report.BROKEN, None),
     (CAI / "E-sig-CA.jpg", report.BROKEN, None),
     (CAI / "A.jpg", report.NONE, None),
+    (GENERATORS / "chatgpt-diwali.png", report.AI_MADE, "Made with AI."),
 ])
 def test_verdicts(path, want, headline):
     r = verdict(path)

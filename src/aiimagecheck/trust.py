@@ -30,6 +30,26 @@ SOURCES = {
 }
 MAX_BYTES = 2_000_000  # each list is tens of KB; anything this big is wrong
 
+# The certificate uses ("extended key usages") a C2PA signer may have, as in
+# the interim list's store.cfg. Without them the library rejects real signers
+# such as OpenAI ("certificate missing required EKU") and the record looks
+# broken. These are standard OIDs, not a trust list, so they ship with the
+# code and apply even before `update-trust` has been run.
+BASE_TRUST_CONFIG = """\
+//id-kp-emailProtection
+1.3.6.1.5.5.7.3.4
+//id-kp-documentSigning
+1.3.6.1.5.5.7.3.36
+//id-kp-timeStamping
+1.3.6.1.5.5.7.3.8
+//id-kp-OCSPSigning
+1.3.6.1.5.5.7.3.9
+// MS C2PA Signing
+1.3.6.1.4.1.311.76.59.1.9
+// c2pa-claim_signing
+1.3.6.1.4.1.62558.2.1
+"""
+
 
 def cache_dir() -> Path:
     base = os.environ.get("XDG_CACHE_HOME") or os.path.join(Path.home(), ".cache")
@@ -73,6 +93,18 @@ def settings(directory: Path | None = None) -> dict | None:
             "trust_config": (directory / "interim-store.cfg").read_text(),
         },
     }
+
+
+def with_base_ekus(settings: dict | None) -> dict:
+    """The settings to read with: the given trust settings (or none, which
+    checks the signature but not the signer), plus the standard signer
+    certificate uses when the settings bring no list of their own."""
+    out = {"verify": {"verify_trust": False}, "trust": {}}
+    if settings:
+        out = {k: dict(v) if isinstance(v, dict) else v for k, v in settings.items()}
+        out.setdefault("trust", {})
+    out["trust"].setdefault("trust_config", BASE_TRUST_CONFIG)
+    return out
 
 
 def updated_at(directory: Path | None = None) -> str:

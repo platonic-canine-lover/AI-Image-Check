@@ -9,6 +9,7 @@ from PIL import Image
 FIXTURES = Path(__file__).parent / "fixtures"
 CAI = FIXTURES / "caidata"
 MADE = FIXTURES / "made"
+GENERATORS = FIXTURES / "generators"
 
 
 @pytest.fixture(autouse=True)

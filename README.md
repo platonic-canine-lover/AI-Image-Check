@@ -20,10 +20,10 @@ It reports evidence, never a guess. When there is no evidence it says so,
 and that means **unknown**, not **real**.
 
 > **Status: v1.** Content Credentials and metadata labels, a command line
-> and a local page, all tested (see [Testing](#testing)). Not yet checked
-> against a file straight from a real AI generator: every signed test image
-> so far is either an official C2PA sample or one made for the tests with
-> the C2PA test certificate. See [Roadmap](#roadmap).
+> and a local page, all tested (see [Testing](#testing)). Checked against
+> real ChatGPT output: "Made with AI", signed by OpenAI, on the trust lists.
+> Firefly, Gemini and Photoshop generative fill are not checked yet. See
+> [Roadmap](#roadmap).
 
 ## What it reads
 
@@ -110,6 +110,11 @@ which covers signers from before the conformance programme. They are not
 shipped with the code because they change. Without them, signatures are
 still checked but every signer is reported as unconfirmed.
 
+What *is* shipped is the short list of certificate uses (EKUs) a C2PA signer
+may have, copied from the interim list's `store.cfg`. Without it the library
+rejects real signers such as OpenAI ("certificate missing required EKU"), and
+a genuine ChatGPT image was reported as broken.
+
 ## Testing
 
 ```sh
@@ -118,13 +123,14 @@ still checked but every signer is reported as unconfirmed.
 .venv/bin/python tests/make_fixtures.py   # rebuild the signed test images
 ```
 
-51 tests, no network needed. They never use the machine's cached trust
+54 tests, no network needed. They never use the machine's cached trust
 lists; trusted-signer cases use the C2PA test root as their only anchor.
 
 | Test images | What they cover |
 |---|---|
 | `tests/fixtures/caidata/` (official C2PA samples) | no credentials; computer-made but not AI; an edit that kept its source thumbnail; a broken signature; an image changed after signing; a real Adobe-signed composite |
 | `tests/fixtures/made/` (built by `make_fixtures.py`) | made by AI; edited with AI; AI then cropped in an ordinary editor; a camera photo |
+| `tests/fixtures/generators/` (saved straight from the generator) | a real ChatGPT image, signed by OpenAI; see its README |
 | generated in the tests with Pillow | each metadata label, and look-alikes that must not count (a caption naming OpenAI, `algorithmicMedia`, a PNG chunk without generator settings) |
 
 It has also been run by hand over older official C2PA samples with long
@@ -153,7 +159,8 @@ src/aiimagecheck/
 | | |
 |---|---|
 | ✅ v1 | Content Credentials (integrity, trust lists, actions, source thumbnails), metadata labels, CLI, local page |
-| next | Check real generator output (ChatGPT, Firefly, Gemini, Photoshop generative fill) and record what each writes |
+| ✅ | Real generator output: ChatGPT (gpt-image, signed by OpenAI) |
+| next | The same for Firefly, Gemini and Photoshop generative fill |
 | next | Measure what common apps and platforms strip (messaging apps, social networks, screenshots), so the "no evidence" wording can name them accurately |
 | v2 | A local detector score for images with no records, added only after candidate models are measured on a labelled set, and always reported as an estimate |
 
@@ -163,4 +170,5 @@ library and [Pillow](https://python-pillow.org/).
 ## Licence
 
 MIT. See [LICENSE](LICENSE). Test images in `tests/fixtures/caidata` are
-from c2pa-python, under its MIT licence.
+from c2pa-python, under its MIT licence. The image in `tests/fixtures/generators`
+was made by the maintainer with ChatGPT for these tests.

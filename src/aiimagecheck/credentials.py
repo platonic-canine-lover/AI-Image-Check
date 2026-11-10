@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 import c2pa
 
 from . import sources
+from . import trust as trust_lists
 
 
 @dataclass
@@ -76,10 +77,11 @@ def read(data: bytes, trust: dict | None = None) -> Credentials:
     trust is the C2PA settings for trust lists (see trust.py); without it the
     signature is still checked but the signer cannot be confirmed.
     """
-    context = c2pa.Context.from_dict(trust) if trust else None
+    context = c2pa.Context.from_dict(trust_lists.with_base_ekus(trust))
     try:
         reader = c2pa.Reader(None, io.BytesIO(data), context=context)
     except c2pa.C2paError as err:
+        context.close()
         if "ManifestNotFound" in type(err).__name__ or "no JUMBF" in str(err):
             return Credentials(present=False)
         # A record is there but unreadable, or the file type is unsupported.
@@ -89,8 +91,7 @@ def read(data: bytes, trust: dict | None = None) -> Credentials:
         return _from_store(store, reader, trust_checked=bool(trust))
     finally:
         reader.close()
-        if context:
-            context.close()
+        context.close()
 
 
 def _from_store(store: dict, reader: c2pa.Reader, trust_checked: bool) -> Credentials:
